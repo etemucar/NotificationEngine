@@ -1,0 +1,7 @@
+<Solution>
+  <Project Path="NotificationEngine.Api/NotificationEngine.Api.csproj" />
+  <Project Path="NotificationEngine.Core/NotificationEngine.Core.csproj" />
+  <Project Path="NotificationEngine.Infrastructure/NotificationEngine.Infrastructure.csproj" />
+  <Project Path="NotificationEngine.Service.Tests/NotificationEngine.Service.Tests.csproj" />
+  <Project Path="NotificationEngine.Service/NotificationEngine.Service.csproj" />
+</Solution>

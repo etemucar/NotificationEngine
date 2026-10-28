@@ -1,0 +1,30 @@
+name: NotificationEngine Tests
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Restore
+        run: dotnet restore
+
+      - name: Build
+        run: dotnet build --no-restore --configuration Release
+
+      # xUnit v3 test projesi kendi başına çalışan bir uygulamadır; "dotnet run" native runner'ı kullanır.
+      - name: Run NotificationEngine.Service.Tests
+        run: dotnet run --project NotificationEngine.Service.Tests --configuration Release --no-build
