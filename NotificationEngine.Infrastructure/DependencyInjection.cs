@@ -35,10 +35,19 @@ public static class DependencyInjection
         services.AddScoped<IUnitOfWork, UnitOfWork>();
         services.AddScoped<IOutboxStore, OutboxStore>();
 
+        // ── Sağlayıcı ayarları ────────────────────────────────────────────
+        // Her sınıf kendi From(configuration) metodu ile ilgili bölümü okur.
+        // From metotları varsayılan değerleri ve mevcut anahtar eşlemelerini korur.
+        // Singleton ayarlar ilk çözümlemede okunur; değişiklikler için uygulama yeniden başlatılır.
+        services.AddSingleton<SesOptions>(_ => SesOptions.From(configuration));
+        services.AddSingleton<SmtpOptions>(_ => SmtpOptions.From(configuration));
+        services.AddSingleton<NetgsmOptions>(_ => NetgsmOptions.From(configuration));
+        services.AddSingleton<IletiMerkeziOptions>(_ => IletiMerkeziOptions.From(configuration));
+        services.AddSingleton<FcmProviderOptions>(_ => FcmProviderOptions.From(configuration));
+
         // ── Kanal sağlayıcıları ──────────────────────────────────────────
         // Hangisinin kullanılacağı Notification:Providers:{Email|Sms|Push} yapılandırmasından seçilir.
-        // Ayar yoksa Console (sahte) sağlayıcı devreye girer. Seçilmeyen sağlayıcılar kayıtlı kalır ama
-        // kullanılmaz; seçenekleri ilk gönderimde okunur (açılışta patlamaz).
+        // Ayar yoksa Console (sahte) sağlayıcı devreye girer.
         foreach (var channel in Enum.GetValues<Channel>())
         {
             var ch = channel;
@@ -47,34 +56,22 @@ public static class DependencyInjection
         }
         services.AddScoped<IChannelProviderResolver, ChannelProviderResolver>();
 
-        // E-posta: Amazon SES. Seçmek için: Notification:Providers:Email = "Ses"
-        services.AddSingleton<IChannelProvider>(sp => new SesEmailProvider(
-            SesOptions.From(configuration),
-            sp.GetRequiredService<ILogger<SesEmailProvider>>()));
+        // E-posta: Notification:Providers:Email = "Ses" veya "Smtp".
+        // Kuruculardaki options ve logger bağımlılıkları DI tarafından sağlanır.
+        services.AddSingleton<IChannelProvider, SesEmailProvider>();
+        services.AddSingleton<IChannelProvider, SmtpEmailProvider>();
 
-        // E-posta: SMTP. Seçmek için: Notification:Providers:Email = "Smtp"
-        services.AddSingleton<IChannelProvider>(sp => new SmtpEmailProvider(
-            SmtpOptions.From(configuration),
-            sp.GetRequiredService<ILogger<SmtpEmailProvider>>()));
+        // SMS: Notification:Providers:Sms = "Netgsm" veya "IletiMerkezi".
+        services.AddHttpClient(NetgsmSmsProvider.HttpClientName,
+            client => client.Timeout = TimeSpan.FromSeconds(15));
+        services.AddSingleton<IChannelProvider, NetgsmSmsProvider>();
 
-        // SMS: Netgsm. Seçmek için: Notification:Providers:Sms = "Netgsm"
-        services.AddHttpClient(NetgsmSmsProvider.HttpClientName, c => c.Timeout = TimeSpan.FromSeconds(15));
-        services.AddSingleton<IChannelProvider>(sp => new NetgsmSmsProvider(
-            sp.GetRequiredService<IHttpClientFactory>(),
-            NetgsmOptions.From(configuration),
-            sp.GetRequiredService<ILogger<NetgsmSmsProvider>>()));
+        services.AddHttpClient(IletiMerkeziSmsProvider.HttpClientName,
+            client => client.Timeout = TimeSpan.FromSeconds(15));
+        services.AddSingleton<IChannelProvider, IletiMerkeziSmsProvider>();
 
-        // SMS: İleti Merkezi. Seçmek için: Notification:Providers:Sms = "IletiMerkezi"
-        services.AddHttpClient(IletiMerkeziSmsProvider.HttpClientName, c => c.Timeout = TimeSpan.FromSeconds(15));
-        services.AddSingleton<IChannelProvider>(sp => new IletiMerkeziSmsProvider(
-            sp.GetRequiredService<IHttpClientFactory>(),
-            IletiMerkeziOptions.From(configuration),
-            sp.GetRequiredService<ILogger<IletiMerkeziSmsProvider>>()));
-
-        // Push: Firebase Cloud Messaging. Seçmek için: Notification:Providers:Push = "Fcm"
-        services.AddSingleton<IChannelProvider>(sp => new FcmPushProvider(
-            FcmProviderOptions.From(configuration),
-            sp.GetRequiredService<ILogger<FcmPushProvider>>()));
+        // Push: Notification:Providers:Push = "Fcm".
+        services.AddSingleton<IChannelProvider, FcmPushProvider>();
 
         return services;
     }
