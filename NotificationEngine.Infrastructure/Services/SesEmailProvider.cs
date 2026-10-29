@@ -24,7 +24,8 @@ public sealed class SesEmailProvider : IChannelProvider
         _options = options;
         _logger = logger;
         // İstemci ilk gönderimde oluşturulur: yapılandırması eksik olan sağlayıcı açılışta patlamasın.
-        _client = new Lazy<AmazonSimpleEmailServiceV2Client>(CreateClient);
+        // PublicationOnly: oluşturma sırasında fırlayan hata önbelleğe alınmaz, sonraki çağrıda yeniden denenir.
+        _client = new Lazy<AmazonSimpleEmailServiceV2Client>(CreateClient, LazyThreadSafetyMode.PublicationOnly);
     }
 
     public Channel Channel => Channel.Email;
@@ -34,6 +35,16 @@ public sealed class SesEmailProvider : IChannelProvider
     {
         if (!_options.IsConfigured)
             return SendResult.Permanent("SES yapılandırması eksik (Region, FromAddress).");
+
+        // Anahtarlardan yalnızca biri doluysa sessizce varsayılan AWS kimlik zincirine düşmek yerine açık hata ver.
+        var hasKey = !string.IsNullOrWhiteSpace(_options.AccessKeyId);
+        var hasSecret = !string.IsNullOrWhiteSpace(_options.SecretAccessKey);
+        if (hasKey != hasSecret)
+        {
+            _logger.LogError("SES yapılandırma hatası: AccessKeyId ve SecretAccessKey birlikte tanımlanmalı (AccessKeyId dolu: {HasKey}, SecretAccessKey dolu: {HasSecret}).",
+                hasKey, hasSecret);
+            return SendResult.Permanent("SES yapılandırması hatalı (AccessKeyId ve SecretAccessKey birlikte tanımlanmalı).");
+        }
 
         var fromAddress = message.FromEmail ?? _options.FromAddress!;
         var fromName = Sanitize(message.FromName ?? _options.FromName);
@@ -90,7 +101,14 @@ public sealed class SesEmailProvider : IChannelProvider
         }
         catch (Exception ex) when (ex is AmazonClientException or HttpRequestException or TaskCanceledException)
         {
-            _logger.LogWarning("SES'e ulaşılamadı: {ExceptionType}", ex.GetType().Name);
+            // Kök neden teşhisi için hata mesajı ve iç hata tipi loglanır (ör. "Unable to find credentials",
+            // "No RegionEndpoint or ServiceURL configured"). Bu mesajlar alıcı adresi, konu ya da gövde içermez.
+            _logger.LogWarning(
+                "SES'e ulaşılamadı: {ExceptionType} - {Message} (iç hata: {InnerType} - {InnerMessage})",
+                ex.GetType().Name,
+                ex.Message,
+                ex.InnerException?.GetType().Name ?? "-",
+                ex.InnerException?.Message ?? "-");
             return SendResult.Transient("SES'e ulaşılamadı.");
         }
     }
