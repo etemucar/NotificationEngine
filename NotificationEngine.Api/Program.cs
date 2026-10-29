@@ -143,7 +143,7 @@ app.UseForwardedHeaders(forwardedHeadersOptions);
 app.UseMiddleware<ExceptionMiddleware>();
 
 // Dokümantasyon yalnızca geliştirme ortamında açık (yönetici uçları var).
-if (app.Environment.IsDevelopment())
+if (app.Environment.IsDevelopment() || app.Configuration.GetValue("Scalar:Enabled", false))
 {
     app.MapOpenApi();
     app.MapScalarApiReference(options =>
@@ -153,7 +153,8 @@ if (app.Environment.IsDevelopment())
                .WithDefaultHttpClient(ScalarTarget.CSharp, ScalarClient.HttpClient);
     });
 }
-else
+
+if (!app.Environment.IsDevelopment())
 {
     app.UseHsts();
 }
